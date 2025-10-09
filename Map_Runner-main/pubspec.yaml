@@ -15,6 +15,7 @@ dependencies:
   file_picker: ^10.3.3
   intl: ^0.19.0
   cupertino_icons: ^1.0.2
+  mqtt_client: ^9.8.1
 
 dev_dependencies:
   flutter_test:
