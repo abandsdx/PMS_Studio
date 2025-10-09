@@ -17,6 +17,8 @@ class NavigationController {
     String selectedMapName, {
     required NavigationOrder navigationOrder,
     required bool Function() isStopping,
+    String? returnPoint,
+    Function(int, int)? progressCallback,
   }) async {
     final taskStartTime = DateTime.now();
     final missionId =
@@ -24,7 +26,7 @@ class NavigationController {
     final uId = (Random().nextInt(9000) + 1000).toString();
 
     final List<NavigationLeg> navigationLegs = [];
-    String status = "Failed"; // Default status
+    String status = "Failed";
 
     try {
       log("啟動 New Task...");
@@ -39,7 +41,6 @@ class NavigationController {
         orElse: () => throw Exception("Map '$selectedMapName' not found"),
       );
 
-      // Create a mutable copy of the locations list to be modified.
       final List<String> rLocationNames = List.from(selectedMap.rLocations);
 
       switch (navigationOrder) {
@@ -51,10 +52,11 @@ class NavigationController {
           rLocationNames.shuffle();
           log("導航順序: 隨機");
           break;
-        // No default case needed as all enum values are handled.
       }
 
       log("rLocations: ${rLocationNames.join(', ')}");
+      final totalLocations = rLocationNames.length;
+      int currentLocationIndex = 0;
 
       for (String locationName in rLocationNames) {
         if (isStopping()) {
@@ -63,6 +65,9 @@ class NavigationController {
           await api.stopMovement(sn, missionId, uId);
           break;
         }
+
+        currentLocationIndex++;
+        progressCallback?.call(currentLocationIndex, totalLocations);
 
         final legStartTime = DateTime.now();
         log("導航至: $locationName (開始時間: ${legStartTime.toIso8601String()})");
@@ -94,6 +99,39 @@ class NavigationController {
           endWifiSsid: finalRobotInfo?.wifiSsid,
           endWifiRssi: finalRobotInfo?.wifiRssi,
         ));
+      }
+
+      // Navigate to the return point if specified and not stopped
+      if (status != "Stopped by user" && returnPoint != null) {
+        log("導航至返回點: $returnPoint");
+        final legStartTime = DateTime.now();
+        await api.navigation(
+            missionId: missionId, uId: uId, sn: sn, locationName: returnPoint);
+
+        String moveStatus = "";
+        RobotInfo? finalRobotInfo;
+        while (moveStatus != "10") {
+           if (isStopping()) break;
+           await Future.delayed(const Duration(seconds: 2));
+           finalRobotInfo = await api.getRobotMoveStatus(sn);
+           moveStatus = finalRobotInfo.moveStatus;
+        }
+
+        if (!isStopping()) {
+          final legEndTime = DateTime.now();
+          log("已到達返回點 $returnPoint (結束時間: ${legEndTime.toIso8601String()})");
+          navigationLegs.add(NavigationLeg(
+            targetLocation: returnPoint,
+            startTime: legStartTime,
+            endTime: legEndTime,
+            endWifiSsid: finalRobotInfo?.wifiSsid,
+            endWifiRssi: finalRobotInfo?.wifiRssi,
+          ));
+        } else {
+            log("任務在返回點 '$returnPoint' 中途被使用者手動停止。");
+            status = "Stopped by user";
+            await api.stopMovement(sn, missionId, uId);
+        }
       }
 
       if (status != "Stopped by user") {

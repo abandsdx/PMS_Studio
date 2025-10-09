@@ -47,6 +47,8 @@ class NavigationPageState extends State<NavigationPage> {
   // State for maps
   String? selectedMapName;
   List<String> mapNames = [];
+  List<String> rLocationsForSelectedMap = [];
+  String? selectedReturnPoint;
 
   // State for robots
   String? selectedSn;
@@ -57,6 +59,7 @@ class NavigationPageState extends State<NavigationPage> {
 
   // State for logging and reports
   List<String> logLines = [];
+  String navigationProgress = "";
   TaskReport? lastTaskReport;
   bool isRunning = false;
   bool _isStopping = false;
@@ -165,8 +168,9 @@ class NavigationPageState extends State<NavigationPage> {
     if (!mounted) return;
     setState(() {
       isRunning = true;
-      _isStopping = false; // Reset stop flag at the beginning
+      _isStopping = false;
       lastTaskReport = null;
+      navigationProgress = ""; // Reset progress at the start
     });
 
     final report = await controller.startNavigation(
@@ -174,12 +178,20 @@ class NavigationPageState extends State<NavigationPage> {
       selectedMapName!,
       navigationOrder: _selectedOrder,
       isStopping: () => _isStopping,
+      returnPoint: selectedReturnPoint,
+      progressCallback: (current, total) {
+        if (!mounted) return;
+        setState(() {
+          navigationProgress = "導航中: $current / $total";
+        });
+      },
     );
 
     if (!mounted) return;
     setState(() {
       isRunning = false;
       lastTaskReport = report;
+      navigationProgress = ""; // Clear progress when done
     });
   }
 
@@ -284,7 +296,45 @@ class NavigationPageState extends State<NavigationPage> {
                   items: mapNames.map((name) {
                     return DropdownMenuItem(value: name, child: Text(name));
                   }).toList(),
-                  onChanged: (val) => setState(() => selectedMapName = val),
+                  onChanged: (val) async {
+                    if (val == null) return;
+                    setState(() {
+                      selectedMapName = val;
+                      selectedReturnPoint = null; // Reset return point
+                      rLocationsForSelectedMap = []; // Clear old locations
+                    });
+                    // Load locations for the new map
+                    try {
+                      final maps = await apiService.getLocations();
+                      final selectedMapInfo = maps.firstWhere(
+                        (map) => map.mapName == val,
+                        orElse: () => throw Exception("Map not found"),
+                      );
+                      setState(() {
+                        rLocationsForSelectedMap =
+                            List.from(selectedMapInfo.rLocations);
+                      });
+                    } catch (e) {
+                      addLog("抓取地點失敗: $e");
+                    }
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Return Point Selection
+            Row(
+              children: [
+                const Text("選擇返回點: "),
+                const SizedBox(width: 16),
+                DropdownButton<String>(
+                  value: selectedReturnPoint,
+                  hint: const Text("可選"),
+                  items: rLocationsForSelectedMap.map((name) {
+                    return DropdownMenuItem(value: name, child: Text(name));
+                  }).toList(),
+                  onChanged: (val) =>
+                      setState(() => selectedReturnPoint = val),
                 ),
               ],
             ),
@@ -299,6 +349,17 @@ class NavigationPageState extends State<NavigationPage> {
               },
             ),
             const SizedBox(height: 16),
+            // Progress Display
+            if (isRunning)
+              Text(
+                navigationProgress,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                ),
+              ),
+            const SizedBox(height: 16),
             // Action Buttons
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -306,7 +367,8 @@ class NavigationPageState extends State<NavigationPage> {
                 if (isRunning)
                   ElevatedButton(
                     onPressed: _stopNavigation,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    style:
+                        ElevatedButton.styleFrom(backgroundColor: Colors.red),
                     child: const Text("停止"),
                   )
                 else
