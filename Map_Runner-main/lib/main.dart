@@ -2,10 +2,13 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'api_service.dart';
+import 'models/location_model.dart';
 import 'models/report_model.dart';
+import 'models/robot_info_model.dart';
 import 'navigation_controller.dart';
 import 'report_generator.dart';
 import 'widgets/log_console.dart';
+import 'widgets/map_tracking_dialog.dart';
 
 // Enum for the new navigation order feature
 enum NavigationOrder { sorted, random }
@@ -53,6 +56,7 @@ class NavigationPageState extends State<NavigationPage> {
   // State for robots
   String? selectedSn;
   List<String> robotSns = [];
+  List<RobotInfo> robotInfoList = [];
 
   // State for navigation order
   NavigationOrder _selectedOrder = NavigationOrder.sorted;
@@ -128,6 +132,7 @@ class NavigationPageState extends State<NavigationPage> {
       if (!mounted) return;
       setState(() {
         selectedSn = null;
+        robotInfoList = robots;
         robotSns = robots.map((robot) => robot.sn).toSet().toList();
       });
       if (robotSns.isNotEmpty) {
@@ -237,6 +242,41 @@ class NavigationPageState extends State<NavigationPage> {
     });
   }
 
+  Future<void> _showMapDialog() async {
+    if (selectedMapName == null || selectedSn == null) {
+      addLog("錯誤：未選擇地圖或機器人。");
+      return;
+    }
+
+    try {
+      // Find the full MapInfo object
+      final maps = await apiService.getLocations();
+      final selectedMapInfo = maps.firstWhere(
+        (map) => map.mapName == selectedMapName,
+        orElse: () => throw Exception("Map not found in list"),
+      );
+
+      // Find the chassisUuid for the selected robot
+      final selectedRobotInfo = robotInfoList.firstWhere(
+        (robot) => robot.sn == selectedSn,
+        orElse: () => throw Exception("Robot not found in list"),
+      );
+      final robotUuid = selectedRobotInfo.chassisUuid;
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false, // User must tap button to close
+        builder: (_) => MapTrackingDialog(
+          mapInfo: selectedMapInfo,
+          robotUuid: robotUuid,
+        ),
+      );
+    } catch (e) {
+      addLog("無法顯示地圖：$e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final canGenerateReport = !isRunning && lastTaskReport != null;
@@ -318,6 +358,13 @@ class NavigationPageState extends State<NavigationPage> {
                       addLog("抓取地點失敗: $e");
                     }
                   },
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton(
+                  onPressed: (selectedMapName != null && selectedSn != null)
+                      ? _showMapDialog
+                      : null,
+                  child: const Text("查看地圖"),
                 ),
               ],
             ),
