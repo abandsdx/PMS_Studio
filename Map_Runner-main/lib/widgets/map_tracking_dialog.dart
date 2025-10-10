@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../models/location_model.dart';
 import '../utils/mqtt_service.dart';
-import '../config/mock_config.dart';
 
 /// A data class to hold the label and pixel offset of a fixed point on the map.
 class _LabelPoint {
@@ -45,9 +44,7 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
   // --- Data for Display ---
   List<_LabelPoint> _fixedPointsPx = [];
 
-  // A hardcoded map of all possible named locations and their world coordinates.
-  // In a real app, this might come from a config file or an API.
-  final Map<String, List<double>> _allPossiblePoints = MockConfig.allPossiblePoints;
+  // The hardcoded map of points is no longer needed, as coordinates come from the API.
 
   @override
   void initState() {
@@ -79,11 +76,9 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
     final targetMapInfo = widget.mapInfo;
 
     if (targetMapInfo.mapOrigin.length >= 2) {
-      String finalPath = targetMapInfo.mapImage.replaceAll(' ', '');
-      if (finalPath.startsWith('outputs/')) {
-        finalPath = finalPath.substring('outputs/'.length);
-      }
-      final fullMapUrl = '${MockConfig.mapBaseUrl}/$finalPath';
+      // The mapImage path from the API is a relative path like "/f875ef32_maps/..."
+      // We prepend the base URL to get the full path.
+      final fullMapUrl = 'http://152.69.194.121:8000${targetMapInfo.mapImage}';
 
       ui.Image loadedImage;
       try {
@@ -94,12 +89,13 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
       }
 
       final pointsToDisplay = <_LabelPoint>[];
-      for (String rLocationName in targetMapInfo.rLocations) {
-        if (_allPossiblePoints.containsKey(rLocationName)) {
-          final coords = _allPossiblePoints[rLocationName]!;
-          pointsToDisplay.add(_transformPoint(coords[0], coords[1], rLocationName, loadedImage, targetMapInfo.mapOrigin));
+      // Use the coordinates directly from the MapInfo object provided by the API.
+      targetMapInfo.coordinates.forEach((locationName, coords) {
+        if (coords.length >= 2) {
+          pointsToDisplay.add(_transformPoint(
+              coords[0], coords[1], locationName, loadedImage, targetMapInfo.mapOrigin));
         }
-      }
+      });
 
       setState(() {
         _mapImage = loadedImage;
