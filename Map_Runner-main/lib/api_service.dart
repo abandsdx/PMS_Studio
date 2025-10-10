@@ -43,7 +43,7 @@ class ApiService {
     }
 
     if (response.statusCode == 200) {
-      final decoded = jsonDecode(response.body);
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
       if (decoded is List) {
         final List<MapInfo> allMaps = decoded.expand<MapInfo>((fieldJson) {
           final field = Field.fromJson(fieldJson as Map<String, dynamic>);
