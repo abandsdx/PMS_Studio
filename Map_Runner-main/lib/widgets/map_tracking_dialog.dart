@@ -8,7 +8,8 @@ import '../utils/mqtt_service.dart';
 class _LabelPoint {
   final String label;
   final Offset offset;
-  _LabelPoint({required this.label, required this.offset});
+  final List<double> coordinates;
+  _LabelPoint({required this.label, required this.offset, required this.coordinates});
 }
 
 /// A stateful dialog that displays a map and tracks a robot's position in real-time.
@@ -93,7 +94,7 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
       targetMapInfo.coordinates.forEach((locationName, coords) {
         if (coords.length >= 2) {
           pointsToDisplay.add(_transformPoint(
-              coords[0], coords[1], locationName, loadedImage, targetMapInfo.mapOrigin));
+              locationName, coords, loadedImage, targetMapInfo.mapOrigin));
         }
       });
 
@@ -109,10 +110,12 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
     }
   }
 
-  _LabelPoint _transformPoint(double wx, double wy, String label, ui.Image image, List<double> mapOrigin) {
+  _LabelPoint _transformPoint(String label, List<double> coordinates, ui.Image image, List<double> mapOrigin) {
+    final wx = coordinates[0];
+    final wy = coordinates[1];
     final mapX = (mapOrigin[0] - wy) / _resolution;
     final mapY = (mapOrigin[1] - wx) / _resolution;
-    return _LabelPoint(label: label, offset: Offset(mapX, mapY));
+    return _LabelPoint(label: label, offset: Offset(mapX, mapY), coordinates: coordinates);
   }
 
   void _connectMqtt() {
@@ -221,8 +224,19 @@ class MapAndRobotPainter extends CustomPainter {
       final scaledPosition = point.offset; // Already in image pixel coordinates
       final paintDot = Paint()..color = Colors.red;
       canvas.drawCircle(scaledPosition, 5, paintDot);
+
+      // Format coordinates to two decimal places for display
+      final coordText =
+          '[${point.coordinates[0].toStringAsFixed(2)}, ${point.coordinates[1].toStringAsFixed(2)}]';
+      final fullLabel = '${point.label} $coordText';
+
       final textPainter = TextPainter(
-        text: TextSpan(text: point.label, style: const TextStyle(fontSize: 10, color: Colors.red, backgroundColor: Color(0x99FFFFFF))),
+        text: TextSpan(
+            text: fullLabel,
+            style: const TextStyle(
+                fontSize: 10,
+                color: Colors.red,
+                backgroundColor: Color(0x99FFFFFF))),
         textDirection: ui.TextDirection.ltr,
       );
       textPainter.layout();
