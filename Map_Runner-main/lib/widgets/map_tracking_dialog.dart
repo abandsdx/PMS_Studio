@@ -90,11 +90,22 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
       }
 
       final pointsToDisplay = <_LabelPoint>[];
+      final mapOrigin = targetMapInfo.mapOrigin;
+
       // Use the coordinates directly from the MapInfo object provided by the API.
       targetMapInfo.coordinates.forEach((locationName, coords) {
         if (coords.length >= 2) {
-          pointsToDisplay.add(_transformPoint(
-              locationName, coords, loadedImage, targetMapInfo.mapOrigin));
+          // Inlining the transformation logic here
+          final wx = coords[0];
+          final wy = coords[1];
+          final mapX = (mapOrigin[0] - wy) / _resolution;
+          final mapY = (mapOrigin[1] - wx) / _resolution;
+
+          pointsToDisplay.add(_LabelPoint(
+            label: locationName,
+            offset: Offset(mapX, mapY),
+            coordinates: coords,
+          ));
         }
       });
 
@@ -108,14 +119,6 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
     } else {
       setState(() => _status = 'Error: Invalid map origin data for ${targetMapInfo.mapName}');
     }
-  }
-
-  _LabelPoint _transformPoint(String label, List<double> coordinates, ui.Image image, List<double> mapOrigin) {
-    final wx = coordinates[0];
-    final wy = coordinates[1];
-    final mapX = (mapOrigin[0] - wy) / _resolution;
-    final mapY = (mapOrigin[1] - wx) / _resolution;
-    return _LabelPoint(label: label, offset: Offset(mapX, mapY), coordinates: coordinates);
   }
 
   void _connectMqtt() {
@@ -249,7 +252,7 @@ class MapAndRobotPainter extends CustomPainter {
       for (int i = 1; i < trailPoints.length; i++) {
         path.lineTo(trailPoints[i].dx, trailPoints[i].dy);
       }
-      final trailPaint = Paint()..color = Colors.blue.withOpacity(0.8)..style = PaintingStyle.stroke..strokeWidth = 2.0;
+      final trailPaint = Paint()..color = const Color(0xCC2196F3)..style = PaintingStyle.stroke..strokeWidth = 2.0;
       canvas.drawPath(path, trailPaint);
 
       final currentPosition = trailPoints.last;
