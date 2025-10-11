@@ -45,8 +45,6 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
   // --- Data for Display ---
   List<_LabelPoint> _fixedPointsPx = [];
 
-  // The hardcoded map of points is no longer needed, as coordinates come from the API.
-
   @override
   void initState() {
     super.initState();
@@ -77,8 +75,6 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
     final targetMapInfo = widget.mapInfo;
 
     if (targetMapInfo.mapOrigin.length >= 2) {
-      // The mapImage path from the API is a relative path like "/f875ef32_maps/..."
-      // We prepend the base URL to get the full path.
       final fullMapUrl = 'http://152.69.194.121:8000${targetMapInfo.mapImage}';
 
       ui.Image loadedImage;
@@ -92,10 +88,8 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
       final pointsToDisplay = <_LabelPoint>[];
       final mapOrigin = targetMapInfo.mapOrigin;
 
-      // Use the coordinates directly from the MapInfo object provided by the API.
       targetMapInfo.coordinates.forEach((locationName, coords) {
         if (coords.length >= 2) {
-          // Inlining the transformation logic here
           final wx = coords[0];
           final wy = coords[1];
           final mapX = (mapOrigin[0] - wy) / _resolution;
@@ -216,34 +210,30 @@ class MapAndRobotPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint();
     final mapSourceRect = Rect.fromLTWH(0, 0, mapImage.width.toDouble(), mapImage.height.toDouble());
-    // Draw the map to fit the canvas size
     final canvasDestRect = Rect.fromLTWH(0, 0, size.width, size.height);
     canvas.drawImageRect(mapImage, mapSourceRect, canvasDestRect, paint);
 
-    // No scaling needed here because the CustomPaint size is the image size.
-    // The InteractiveViewer handles the scaling for the user.
-
     for (final point in fixedPoints) {
-      final scaledPosition = point.offset; // Already in image pixel coordinates
+      final position = point.offset;
       final paintDot = Paint()..color = Colors.red;
-      canvas.drawCircle(scaledPosition, 5, paintDot);
+      canvas.drawCircle(position, 5, paintDot);
 
-      // Format coordinates to two decimal places for display
-      final coordText =
-          '[${point.coordinates[0].toStringAsFixed(2)}, ${point.coordinates[1].toStringAsFixed(2)}]';
+      final coordText = '[${point.coordinates[0].toStringAsFixed(2)}, ${point.coordinates[1].toStringAsFixed(2)}]';
       final fullLabel = '${point.label} $coordText';
 
       final textPainter = TextPainter(
         text: TextSpan(
-            text: fullLabel,
-            style: const TextStyle(
-                fontSize: 10,
-                color: Colors.red,
-                backgroundColor: Color(0x99FFFFFF))),
+          text: fullLabel,
+          style: const TextStyle(
+            fontSize: 10,
+            color: Colors.red,
+            backgroundColor: Color(0x99FFFFFF),
+          ),
+        ),
         textDirection: ui.TextDirection.ltr,
       );
       textPainter.layout();
-      textPainter.paint(canvas, scaledPosition + const Offset(8, -18));
+      textPainter.paint(canvas, position + const Offset(8, -18));
     }
 
     if (trailPoints.isNotEmpty) {
@@ -252,7 +242,10 @@ class MapAndRobotPainter extends CustomPainter {
       for (int i = 1; i < trailPoints.length; i++) {
         path.lineTo(trailPoints[i].dx, trailPoints[i].dy);
       }
-      final trailPaint = Paint()..color = const Color(0xCC2196F3)..style = PaintingStyle.stroke..strokeWidth = 2.0;
+      final trailPaint = Paint()
+        ..color = const Color(0xCC2196F3)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
       canvas.drawPath(path, trailPaint);
 
       final currentPosition = trailPoints.last;
