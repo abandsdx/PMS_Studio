@@ -90,14 +90,16 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
 
       targetMapInfo.coordinates.forEach((locationName, coords) {
         if (coords.length >= 2) {
-          final wx = coords[0];
-          final wy = coords[1];
-          final mapX = (mapOrigin[0] - wy) / _resolution;
-          final mapY = (mapOrigin[1] - wx) / _resolution;
+          final worldX = coords[0];
+          final worldY = coords[1];
+
+          // Corrected transformation logic
+          final pixelX = (worldX - mapOrigin[0]) / _resolution;
+          final pixelY = (worldY - mapOrigin[1]) / -_resolution; // Y is inverted
 
           pointsToDisplay.add(_LabelPoint(
             label: locationName,
-            offset: Offset(mapX, mapY),
+            offset: Offset(pixelX, pixelY),
             coordinates: coords,
           ));
         }
@@ -132,8 +134,9 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
       final robotY_m = point.y / 1000.0;
 
       final mapOrigin = widget.mapInfo.mapOrigin;
-      final pixelX = (mapOrigin[0] - robotY_m) / _resolution;
-      final pixelY = (mapOrigin[1] - robotX_m) / _resolution;
+      // Corrected transformation logic for the robot's trail
+      final pixelX = (robotX_m - mapOrigin[0]) / _resolution;
+      final pixelY = (robotY_m - mapOrigin[1]) / -_resolution;
 
       _pointBuffer.add(Offset(pixelX, pixelY));
     });
