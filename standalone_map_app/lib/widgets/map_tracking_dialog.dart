@@ -45,6 +45,11 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
     TransformType.D: [],
   };
 
+  // --- Temporarily disable MQTT for this view ---
+  // Timer? _repaintTimer;
+  // final List<Offset> _pointBuffer = [];
+  // List<Offset> _trailPoints = [];
+
   @override
   void initState() {
     super.initState();
@@ -53,7 +58,8 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
 
   @override
   void dispose() {
-    _mqttService.disconnect(widget.robotUuid);
+    // _repaintTimer?.cancel();
+    // _mqttService.disconnect(widget.robotUuid);
     super.dispose();
   }
 
@@ -108,30 +114,34 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
     final oy = mapOrigin[1];
     final res = widget.resolution;
 
+    // All transformations are now variations of the original "Map B"
     switch (type) {
       case TransformType.A:
-        // My last attempt: Flipped X and Y from origin
-        pixelX = (wx - ox) / -res;
-        pixelY = (wy - oy) / -res;
-        break;
-      case TransformType.B:
-        // Original logic: Rotated and flipped
+        // Original "Map B" formula
         pixelX = (ox - wy) / res;
         pixelY = (oy - wx) / res;
         break;
+      case TransformType.B:
+        // Flipped X-axis
+        pixelX = (ox - wy) / -res;
+        pixelY = (oy - wx) / res;
+        break;
       case TransformType.C:
-        // Standard formula: Y-axis flipped for screen coords
-        pixelX = (wx - ox) / res;
-        pixelY = (wy - oy) / -res;
+        // Flipped Y-axis
+        pixelX = (ox - wy) / res;
+        pixelY = (oy - wx) / -res;
         break;
       case TransformType.D:
-        // Standard formula but with image height for top-left origin
-        pixelX = (wx - ox) / res;
-        pixelY = image.height - ((wy - oy) / res);
+        // Flipped both X and Y axes
+        pixelX = (ox - wy) / -res;
+        pixelY = (oy - wx) / -res;
         break;
     }
     return _LabelPoint(label: label, offset: Offset(pixelX, pixelY));
   }
+
+  // --- MQTT connection temporarily disabled ---
+  // void _connectMqtt() { ... }
 
   @override
   Widget build(BuildContext context) {
@@ -184,7 +194,7 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
 
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-      title: const Text('Transformation Debug View'),
+      title: const Text('Transformation Debug View (Round 2)'),
       contentPadding: const EdgeInsets.all(8),
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.9,
@@ -211,13 +221,9 @@ class MapAndRobotPainter extends CustomPainter {
   final ui.Image mapImage;
   final List<_LabelPoint> fixedPoints;
 
-  // Temporarily disable trail points for this debug view
-  // final List<Offset> trailPoints;
-
   MapAndRobotPainter({
     required this.mapImage,
     required this.fixedPoints,
-    // required this.trailPoints,
   });
 
   @override
