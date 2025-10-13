@@ -4,14 +4,15 @@ import 'package:flutter/material.dart';
 import '../models/map_data.dart';
 import '../utils/mqtt_service.dart';
 
-/// A data class to hold the label and pixel offset of a fixed point on the map.
+// Enum to define the different transformation types for debugging.
+enum TransformType { A, B, C, D }
+
 class _LabelPoint {
   final String label;
   final Offset offset;
   _LabelPoint({required this.label, required this.offset});
 }
 
-/// A stateful dialog that displays a map and tracks a robot's position in real-time.
 class MapTrackingDialog extends StatefulWidget {
   final MapData mapInfo;
   final String robotUuid;
@@ -29,22 +30,20 @@ class MapTrackingDialog extends StatefulWidget {
 }
 
 class _MapTrackingDialogState extends State<MapTrackingDialog> {
-  // --- Services and Constants ---
   final MqttService _mqttService = MqttService();
   static const String mapBaseUrl = 'http://152.69.194.121:8000';
 
-  // --- State Variables ---
   ui.Image? _mapImage;
   String _status = 'Initializing...';
   bool _isDataReady = false;
 
-  // -- State for real-time drawing --
-  Timer? _repaintTimer;
-  final List<Offset> _pointBuffer = [];
-  List<Offset> _trailPoints = [];
-
-  // --- Data for Display ---
-  List<_LabelPoint> _fixedPointsPx = [];
+  // --- Data for Display (One list for each transformation) ---
+  final Map<TransformType, List<_LabelPoint>> _fixedPointsMap = {
+    TransformType.A: [],
+    TransformType.B: [],
+    TransformType.C: [],
+    TransformType.D: [],
+  };
 
   @override
   void initState() {
@@ -54,7 +53,6 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
 
   @override
   void dispose() {
-    _repaintTimer?.cancel();
     _mqttService.disconnect(widget.robotUuid);
     super.dispose();
   }
@@ -71,116 +69,131 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
   }
 
   void _setupMapAndPoints() async {
-    setState(() => _status = 'Loading map data...');
+    setState(() => _status = 'Loading map and calculating transformations...');
 
     final targetMapInfo = widget.mapInfo;
 
-    if (targetMapInfo.mapOrigin.length >= 2) {
-      final fullMapUrl = '$mapBaseUrl${targetMapInfo.mapImage}';
+    if (targetMapInfo.mapOrigin.length < 2) {
+      setState(() => _status = 'Error: Invalid map origin data.');
+      return;
+    }
 
-      ui.Image loadedImage;
-      try {
-        loadedImage = await _loadImage(fullMapUrl);
-      } catch (e) {
-        setState(() => _status = 'Error loading map image: $e');
-        return;
+    try {
+      final fullMapUrl = '$mapBaseUrl${targetMapInfo.mapImage}';
+      _mapImage = await _loadImage(fullMapUrl);
+
+      // Generate points for each of the four transformation types
+      for (var type in TransformType.values) {
+        final pointsToDisplay = <_LabelPoint>[];
+        targetMapInfo.coordinates.forEach((label, coords) {
+          if (coords.length >= 2) {
+            pointsToDisplay.add(_transformPoint(coords[0], coords[1], label, _mapImage!, targetMapInfo.mapOrigin, type));
+          }
+        });
+        _fixedPointsMap[type] = pointsToDisplay;
       }
 
-      final pointsToDisplay = <_LabelPoint>[];
-      targetMapInfo.coordinates.forEach((label, coords) {
-        if (coords.length >= 2) {
-          pointsToDisplay.add(_transformPoint(coords[0], coords[1], label, loadedImage, targetMapInfo.mapOrigin));
-        }
-      });
-
       setState(() {
-        _mapImage = loadedImage;
-        _fixedPointsPx = pointsToDisplay;
-        _status = 'Map data loaded. Listening for robot position...';
+        _status = 'Please identify the correct transformation (A, B, C, or D).';
         _isDataReady = true;
       });
-      _connectMqtt();
-    } else {
-      setState(() => _status = 'Error: Invalid map origin data for ${targetMapInfo.mapName}');
+    } catch (e) {
+      setState(() => _status = 'Error loading map image: $e');
     }
   }
 
-  _LabelPoint _transformPoint(double wx, double wy, String label, ui.Image image, List<double> mapOrigin) {
-    // Corrected formula based on screenshot analysis
-    final pixelX = (wx - mapOrigin[0]) / -widget.resolution;
-    final pixelY = (wy - mapOrigin[1]) / -widget.resolution;
+  _LabelPoint _transformPoint(double wx, double wy, String label, ui.Image image, List<double> mapOrigin, TransformType type) {
+    double pixelX, pixelY;
+    final ox = mapOrigin[0];
+    final oy = mapOrigin[1];
+    final res = widget.resolution;
+
+    switch (type) {
+      case TransformType.A:
+        // My last attempt: Flipped X and Y from origin
+        pixelX = (wx - ox) / -res;
+        pixelY = (wy - oy) / -res;
+        break;
+      case TransformType.B:
+        // Original logic: Rotated and flipped
+        pixelX = (ox - wy) / res;
+        pixelY = (oy - wx) / res;
+        break;
+      case TransformType.C:
+        // Standard formula: Y-axis flipped for screen coords
+        pixelX = (wx - ox) / res;
+        pixelY = (wy - oy) / -res;
+        break;
+      case TransformType.D:
+        // Standard formula but with image height for top-left origin
+        pixelX = (wx - ox) / res;
+        pixelY = image.height - ((wy - oy) / res);
+        break;
+    }
     return _LabelPoint(label: label, offset: Offset(pixelX, pixelY));
-  }
-
-  void _connectMqtt() {
-    _repaintTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (_pointBuffer.isNotEmpty && mounted) {
-        setState(() {
-          _trailPoints = List.from(_trailPoints)..addAll(_pointBuffer);
-          _pointBuffer.clear();
-        });
-      }
-    });
-
-    _mqttService.positionStream.listen((Point point) {
-      if (!mounted || !_isDataReady) return;
-
-      final robotX_m = point.x / 1000.0;
-      final robotY_m = point.y / 1000.0;
-
-      final mapOrigin = widget.mapInfo.mapOrigin;
-
-      // Apply the same corrected formula to the robot's position
-      final pixelX = (robotX_m - mapOrigin[0]) / -widget.resolution;
-      final pixelY = (robotY_m - mapOrigin[1]) / -widget.resolution;
-
-      _pointBuffer.add(Offset(pixelX, pixelY));
-    });
-    _mqttService.connectAndListen(widget.robotUuid);
   }
 
   @override
   Widget build(BuildContext context) {
-    Widget mapContent;
-    if (_mapImage == null) {
-      mapContent = Center(child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 16),
-          Text(_status),
-        ],
-      ));
-    } else {
-      mapContent = InteractiveViewer(
-        maxScale: 5.0,
-        child: CustomPaint(
-          size: Size(_mapImage!.width.toDouble(), _mapImage!.height.toDouble()),
-          painter: MapAndRobotPainter(
-            mapImage: _mapImage!,
-            trailPoints: _trailPoints,
-            fixedPoints: _fixedPointsPx,
-          ),
+    Widget content;
+    if (!_isDataReady || _mapImage == null) {
+      content = Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(_status),
+          ],
         ),
+      );
+    } else {
+      content = GridView.count(
+        crossAxisCount: 2,
+        childAspectRatio: 1.0,
+        padding: const EdgeInsets.all(4.0),
+        mainAxisSpacing: 4.0,
+        crossAxisSpacing: 4.0,
+        children: TransformType.values.map((type) {
+          return Card(
+            elevation: 2,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text('Map ${type.name}', style: Theme.of(context).textTheme.headlineSmall),
+                ),
+                Expanded(
+                  child: InteractiveViewer(
+                    maxScale: 5.0,
+                    child: CustomPaint(
+                      size: Size(_mapImage!.width.toDouble(), _mapImage!.height.toDouble()),
+                      painter: MapAndRobotPainter(
+                        mapImage: _mapImage!,
+                        fixedPoints: _fixedPointsMap[type]!,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       );
     }
 
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-      title: const Text('Real-time Position Tracking'),
+      title: const Text('Transformation Debug View'),
       contentPadding: const EdgeInsets.all(8),
       content: SizedBox(
-        width: MediaQuery.of(context).size.width * 0.8,
+        width: MediaQuery.of(context).size.width * 0.9,
+        height: MediaQuery.of(context).size.height * 0.8,
         child: Column(
           children: [
             Text(_status, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 8),
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(border: Border.all(color: Colors.blueGrey)),
-                child: mapContent,
-              ),
-            ),
+            Expanded(child: content),
           ],
         ),
       ),
@@ -196,59 +209,39 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
 
 class MapAndRobotPainter extends CustomPainter {
   final ui.Image mapImage;
-  final List<Offset> trailPoints;
   final List<_LabelPoint> fixedPoints;
+
+  // Temporarily disable trail points for this debug view
+  // final List<Offset> trailPoints;
 
   MapAndRobotPainter({
     required this.mapImage,
-    required this.trailPoints,
     required this.fixedPoints,
+    // required this.trailPoints,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint();
     final mapSourceRect = Rect.fromLTWH(0, 0, mapImage.width.toDouble(), mapImage.height.toDouble());
-    // Draw the map to fit the canvas size
     final canvasDestRect = Rect.fromLTWH(0, 0, size.width, size.height);
     canvas.drawImageRect(mapImage, mapSourceRect, canvasDestRect, paint);
 
-    // No scaling needed here because the CustomPaint size is the image size.
-    // The InteractiveViewer handles the scaling for the user.
-
     for (final point in fixedPoints) {
-      final scaledPosition = point.offset; // Already in image pixel coordinates
-      final paintDot = Paint()..color = Colors.red;
+      final scaledPosition = point.offset;
+      final paintDot = Paint()..color = Colors.green; // Using green as per user's screenshot
       canvas.drawCircle(scaledPosition, 5, paintDot);
       final textPainter = TextPainter(
-        text: TextSpan(text: point.label, style: const TextStyle(fontSize: 10, color: Colors.red, backgroundColor: Color(0x99FFFFFF))),
+        text: TextSpan(text: point.label, style: const TextStyle(fontSize: 10, color: Colors.green, backgroundColor: Color(0x99FFFFFF))),
         textDirection: ui.TextDirection.ltr,
       );
       textPainter.layout();
       textPainter.paint(canvas, scaledPosition + const Offset(8, -18));
     }
-
-    if (trailPoints.isNotEmpty) {
-      final path = Path();
-      path.moveTo(trailPoints.first.dx, trailPoints.first.dy);
-      for (int i = 1; i < trailPoints.length; i++) {
-        path.lineTo(trailPoints[i].dx, trailPoints[i].dy);
-      }
-      final trailPaint = Paint()..color = Colors.blue.withOpacity(0.8)..style = PaintingStyle.stroke..strokeWidth = 2.0;
-      canvas.drawPath(path, trailPaint);
-
-      final currentPosition = trailPoints.last;
-      final paintDot = Paint()..style = PaintingStyle.fill..color = const Color(0xFF2E7D32);
-      canvas.drawCircle(currentPosition, 6, paintDot);
-      final paintHalo = Paint()..style = PaintingStyle.stroke..strokeWidth = 2..color = const Color(0x802E7D32);
-      canvas.drawCircle(currentPosition, 10, paintHalo);
-    }
   }
 
   @override
   bool shouldRepaint(covariant MapAndRobotPainter oldDelegate) {
-    return oldDelegate.mapImage != mapImage ||
-           oldDelegate.trailPoints.length != trailPoints.length ||
-           oldDelegate.fixedPoints != fixedPoints;
+    return oldDelegate.mapImage != mapImage || oldDelegate.fixedPoints != fixedPoints;
   }
 }
