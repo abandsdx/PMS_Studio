@@ -45,15 +45,13 @@ class _HomePageState extends State<HomePage> {
   Field? _selectedField;
   MapData? _selectedMap;
   bool _isLoading = false;
-  String? _apiKey;
 
   @override
   void initState() {
     super.initState();
+    // Add a listener to rebuild the widget when the text changes to update button state.
     _apiKeyController.addListener(() {
-      setState(() {
-        _apiKey = _apiKeyController.text;
-      });
+      setState(() {});
     });
   }
 
@@ -64,7 +62,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _fetchFields() async {
-    if (_apiKey == null || _apiKey!.isEmpty) {
+    final apiKey = _apiKeyController.text;
+    if (apiKey.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter an API Key')),
       );
@@ -79,7 +78,7 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      final fields = await _apiService.getFields(_apiKey!);
+      final fields = await _apiService.getFields(apiKey);
       setState(() {
         _fields = fields;
       });
@@ -111,6 +110,9 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Determine if the button should be enabled.
+    final bool isButtonEnabled = _apiKeyController.text.isNotEmpty && !_isLoading;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Map Viewer'),
@@ -130,7 +132,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: (_apiKey != null && _apiKey!.isNotEmpty && !_isLoading) ? _fetchFields : null,
+              onPressed: isButtonEnabled ? _fetchFields : null,
               child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Fetch Fields'),
             ),
             const SizedBox(height: 20),

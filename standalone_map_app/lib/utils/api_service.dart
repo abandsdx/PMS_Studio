@@ -9,7 +9,7 @@ class ApiService {
     try {
       final headers = {
         'Content-Type': 'application/json',
-        'X-Api-Key': apiKey,
+        'Authorization': 'Basic $apiKey',
       };
 
       // First, trigger a refresh
