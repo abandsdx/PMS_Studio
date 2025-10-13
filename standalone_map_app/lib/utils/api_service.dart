@@ -5,19 +5,30 @@ import '../models/field.dart';
 class ApiService {
   static const String baseUrl = 'http://152.69.194.121:8000';
 
-  Future<List<Field>> getFields() async {
+  Future<List<Field>> getFields(String apiKey) async {
     try {
+      final headers = {
+        'Content-Type': 'application/json',
+        'X-Api-Key': apiKey,
+      };
+
       // First, trigger a refresh
-      await http.post(Uri.parse('$baseUrl/trigger-refresh'));
+      await http.post(
+        Uri.parse('$baseUrl/trigger-refresh'),
+        headers: headers,
+      );
 
       // Then, get the field map data
-      final response = await http.get(Uri.parse('$baseUrl/field-map'));
+      final response = await http.get(
+        Uri.parse('$baseUrl/field-map'),
+        headers: headers,
+      );
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
         return data.map((json) => Field.fromJson(json)).toList();
       } else {
-        throw Exception('Failed to load fields');
+        throw Exception('Failed to load fields. Status code: ${response.statusCode}');
       }
     } catch (e) {
       throw Exception('Error fetching fields: $e');
