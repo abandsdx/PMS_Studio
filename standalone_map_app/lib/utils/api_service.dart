@@ -7,9 +7,10 @@ class ApiService {
 
   Future<List<Field>> getFields(String apiKey) async {
     try {
+      // The user will provide the full Authorization header value, e.g., "Basic <token>"
       final headers = {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic $apiKey',
+        'Authorization': apiKey,
       };
 
       // First, trigger a refresh
