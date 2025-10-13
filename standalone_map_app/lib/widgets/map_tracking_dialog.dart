@@ -105,10 +105,9 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
   }
 
   _LabelPoint _transformPoint(double wx, double wy, String label, ui.Image image, List<double> mapOrigin) {
-    // Correct conversion from world coordinates to pixel coordinates
-    final pixelX = (wx - mapOrigin[0]) / _resolution;
-    final pixelY = (wy - mapOrigin[1]) / -_resolution;
-    return _LabelPoint(label: label, offset: Offset(pixelX, pixelY));
+    final mapX = (mapOrigin[0] - wy) / _resolution;
+    final mapY = (mapOrigin[1] - wx) / _resolution;
+    return _LabelPoint(label: label, offset: Offset(mapX, mapY));
   }
 
   void _connectMqtt() {
@@ -124,15 +123,12 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
     _mqttService.positionStream.listen((Point point) {
       if (!mounted || !_isDataReady) return;
 
-      // MQTT coordinates are in millimeters, convert to meters
       final robotX_m = point.x / 1000.0;
       final robotY_m = point.y / 1000.0;
 
       final mapOrigin = widget.mapInfo.mapOrigin;
-
-      // Correct conversion for the robot's position
-      final pixelX = (robotX_m - mapOrigin[0]) / _resolution;
-      final pixelY = (robotY_m - mapOrigin[1]) / -_resolution;
+      final pixelX = (mapOrigin[0] - robotY_m) / _resolution;
+      final pixelY = (mapOrigin[1] - robotX_m) / _resolution;
 
       _pointBuffer.add(Offset(pixelX, pixelY));
     });
