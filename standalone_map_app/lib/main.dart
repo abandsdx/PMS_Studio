@@ -40,31 +40,57 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final ApiService _apiService = ApiService();
+  final TextEditingController _apiKeyController = TextEditingController();
   List<Field> _fields = [];
   Field? _selectedField;
   MapData? _selectedMap;
-  bool _isLoading = true;
+  bool _isLoading = false;
+  String? _apiKey;
 
   @override
   void initState() {
     super.initState();
-    _fetchFields();
+    _apiKeyController.addListener(() {
+      setState(() {
+        _apiKey = _apiKeyController.text;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _apiKeyController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchFields() async {
+    if (_apiKey == null || _apiKey!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter an API Key')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _fields = [];
+      _selectedField = null;
+      _selectedMap = null;
+    });
+
     try {
-      final fields = await _apiService.getFields();
+      final fields = await _apiService.getFields(_apiKey!);
       setState(() {
         _fields = fields;
-        _isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error fetching fields: $e')),
       );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -89,61 +115,75 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('Map Viewer'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  DropdownButton<Field>(
-                    value: _selectedField,
-                    hint: const Text('Select a Field'),
-                    isExpanded: true,
-                    items: _fields.map((Field field) {
-                      return DropdownMenuItem<Field>(
-                        value: field,
-                        child: Text(field.fieldName),
-                      );
-                    }).toList(),
-                    onChanged: (Field? newValue) {
-                      setState(() {
-                        _selectedField = newValue;
-                        _selectedMap = null;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  if (_selectedField != null)
-                    DropdownButton<MapData>(
-                      value: _selectedMap,
-                      hint: const Text('Select a Map'),
-                      isExpanded: true,
-                      items: _selectedField!.maps.map((MapData map) {
-                        return DropdownMenuItem<MapData>(
-                          value: map,
-                          child: Text(map.mapName),
-                        );
-                      }).toList(),
-                      onChanged: (MapData? newValue) {
-                        setState(() {
-                          _selectedMap = newValue;
-                        });
-                      },
-                    ),
-                  const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.map),
-                    label: const Text('Show Map'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      textStyle: const TextStyle(fontSize: 18),
-                    ),
-                    onPressed: _selectedMap != null ? _showMapDialog : null,
-                  ),
-                ],
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextField(
+              controller: _apiKeyController,
+              decoration: const InputDecoration(
+                labelText: 'API Key',
+                hintText: 'Enter your API Key here',
+                border: OutlineInputBorder(),
               ),
             ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: (_apiKey != null && _apiKey!.isNotEmpty && !_isLoading) ? _fetchFields : null,
+              child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Fetch Fields'),
+            ),
+            const SizedBox(height: 20),
+            if (_fields.isNotEmpty) ...[
+              DropdownButton<Field>(
+                value: _selectedField,
+                hint: const Text('Select a Field'),
+                isExpanded: true,
+                items: _fields.map((Field field) {
+                  return DropdownMenuItem<Field>(
+                    value: field,
+                    child: Text(field.fieldName),
+                  );
+                }).toList(),
+                onChanged: (Field? newValue) {
+                  setState(() {
+                    _selectedField = newValue;
+                    _selectedMap = null;
+                  });
+                },
+              ),
+              const SizedBox(height: 20),
+              if (_selectedField != null)
+                DropdownButton<MapData>(
+                  value: _selectedMap,
+                  hint: const Text('Select a Map'),
+                  isExpanded: true,
+                  items: _selectedField!.maps.map((MapData map) {
+                    return DropdownMenuItem<MapData>(
+                      value: map,
+                      child: Text(map.mapName),
+                    );
+                  }).toList(),
+                  onChanged: (MapData? newValue) {
+                    setState(() {
+                      _selectedMap = newValue;
+                    });
+                  },
+                ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.map),
+                label: const Text('Show Map'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  textStyle: const TextStyle(fontSize: 18),
+                ),
+                onPressed: _selectedMap != null ? _showMapDialog : null,
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
