@@ -26,11 +26,11 @@ class MapData {
       coordinates: (json['coordinates'] as Map<String, dynamic>).map(
         (key, value) => MapEntry(
           key,
-          (value as List<dynamic>).map((e) => e.toDouble()).toList(),
+          List<double>.from(value.map((e) => e.toDouble())),
         ),
       ),
       mapImage: json['mapImage'],
-      mapOrigin: (json['mapOrigin'] as List<dynamic>).map((e) => e.toDouble()).toList(),
+      mapOrigin: List<double>.from(json['mapOrigin'].map((e) => e.toDouble())),
     );
   }
 }
