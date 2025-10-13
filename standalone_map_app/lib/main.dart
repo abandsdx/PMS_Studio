@@ -41,6 +41,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final ApiService _apiService = ApiService();
   final TextEditingController _apiKeyController = TextEditingController();
+  final TextEditingController _resolutionController = TextEditingController(text: '0.05');
+
   List<Field> _fields = [];
   Field? _selectedField;
   MapData? _selectedMap;
@@ -49,15 +51,13 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    // Add a listener to rebuild the widget when the text changes to update button state.
-    _apiKeyController.addListener(() {
-      setState(() {});
-    });
+    _apiKeyController.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
     _apiKeyController.dispose();
+    _resolutionController.dispose();
     super.dispose();
   }
 
@@ -95,6 +95,7 @@ class _HomePageState extends State<HomePage> {
 
   void _showMapDialog() {
     if (_selectedMap != null) {
+      final resolution = double.tryParse(_resolutionController.text) ?? 0.05;
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -102,6 +103,7 @@ class _HomePageState extends State<HomePage> {
           return MapTrackingDialog(
             mapInfo: _selectedMap!,
             robotUuid: "mock-robot-123",
+            resolution: resolution,
           );
         },
       );
@@ -110,14 +112,13 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Determine if the button should be enabled.
-    final bool isButtonEnabled = _apiKeyController.text.isNotEmpty && !_isLoading;
+    final bool isFetchButtonEnabled = _apiKeyController.text.isNotEmpty && !_isLoading;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Map Viewer'),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -132,7 +133,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: isButtonEnabled ? _fetchFields : null,
+              onPressed: isFetchButtonEnabled ? _fetchFields : null,
               child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Fetch Fields'),
             ),
             const SizedBox(height: 20),
@@ -173,6 +174,17 @@ class _HomePageState extends State<HomePage> {
                   },
                 ),
               const SizedBox(height: 20),
+              if (_selectedMap != null) ...[
+                TextField(
+                  controller: _resolutionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Resolution (meters/pixel)',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+                const SizedBox(height: 20),
+              ],
               ElevatedButton.icon(
                 icon: const Icon(Icons.map),
                 label: const Text('Show Map'),

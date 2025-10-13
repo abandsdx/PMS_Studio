@@ -15,11 +15,13 @@ class _LabelPoint {
 class MapTrackingDialog extends StatefulWidget {
   final MapData mapInfo;
   final String robotUuid;
+  final double resolution;
 
   const MapTrackingDialog({
     Key? key,
     required this.mapInfo,
     required this.robotUuid,
+    required this.resolution,
   }) : super(key: key);
 
   @override
@@ -29,7 +31,6 @@ class MapTrackingDialog extends StatefulWidget {
 class _MapTrackingDialogState extends State<MapTrackingDialog> {
   // --- Services and Constants ---
   final MqttService _mqttService = MqttService();
-  final double _resolution = 0.05; // meters per pixel
   static const String mapBaseUrl = 'http://152.69.194.121:8000';
 
   // --- State Variables ---
@@ -105,9 +106,10 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
   }
 
   _LabelPoint _transformPoint(double wx, double wy, String label, ui.Image image, List<double> mapOrigin) {
-    final mapX = (mapOrigin[0] - wy) / _resolution;
-    final mapY = (mapOrigin[1] - wx) / _resolution;
-    return _LabelPoint(label: label, offset: Offset(mapX, mapY));
+    // Corrected formula based on screenshot analysis
+    final pixelX = (wx - mapOrigin[0]) / -widget.resolution;
+    final pixelY = (wy - mapOrigin[1]) / -widget.resolution;
+    return _LabelPoint(label: label, offset: Offset(pixelX, pixelY));
   }
 
   void _connectMqtt() {
@@ -127,8 +129,10 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
       final robotY_m = point.y / 1000.0;
 
       final mapOrigin = widget.mapInfo.mapOrigin;
-      final pixelX = (mapOrigin[0] - robotY_m) / _resolution;
-      final pixelY = (mapOrigin[1] - robotX_m) / _resolution;
+
+      // Apply the same corrected formula to the robot's position
+      final pixelX = (robotX_m - mapOrigin[0]) / -widget.resolution;
+      final pixelY = (robotY_m - mapOrigin[1]) / -widget.resolution;
 
       _pointBuffer.add(Offset(pixelX, pixelY));
     });
