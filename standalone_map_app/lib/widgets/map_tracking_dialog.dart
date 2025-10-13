@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import '../models/map_info.dart';
+import '../models/map_data.dart';
 import '../utils/mqtt_service.dart';
-import '../config/mock_config.dart';
 
 /// A data class to hold the label and pixel offset of a fixed point on the map.
 class _LabelPoint {
@@ -14,7 +13,7 @@ class _LabelPoint {
 
 /// A stateful dialog that displays a map and tracks a robot's position in real-time.
 class MapTrackingDialog extends StatefulWidget {
-  final MapInfo mapInfo;
+  final MapData mapInfo;
   final String robotUuid;
 
   const MapTrackingDialog({
@@ -31,6 +30,7 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
   // --- Services and Constants ---
   final MqttService _mqttService = MqttService();
   final double _resolution = 0.05; // meters per pixel
+  static const String mapBaseUrl = 'http://152.69.194.121:8000';
 
   // --- State Variables ---
   ui.Image? _mapImage;
@@ -44,10 +44,6 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
 
   // --- Data for Display ---
   List<_LabelPoint> _fixedPointsPx = [];
-
-  // A hardcoded map of all possible named locations and their world coordinates.
-  // In a real app, this might come from a config file or an API.
-  final Map<String, List<double>> _allPossiblePoints = MockConfig.allPossiblePoints;
 
   @override
   void initState() {
@@ -79,11 +75,7 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
     final targetMapInfo = widget.mapInfo;
 
     if (targetMapInfo.mapOrigin.length >= 2) {
-      String finalPath = targetMapInfo.mapImage.replaceAll(' ', '');
-      if (finalPath.startsWith('outputs/')) {
-        finalPath = finalPath.substring('outputs/'.length);
-      }
-      final fullMapUrl = '${MockConfig.mapBaseUrl}/$finalPath';
+      final fullMapUrl = '$mapBaseUrl${targetMapInfo.mapImage}';
 
       ui.Image loadedImage;
       try {
@@ -94,12 +86,11 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
       }
 
       final pointsToDisplay = <_LabelPoint>[];
-      for (String rLocationName in targetMapInfo.rLocations) {
-        if (_allPossiblePoints.containsKey(rLocationName)) {
-          final coords = _allPossiblePoints[rLocationName]!;
-          pointsToDisplay.add(_transformPoint(coords[0], coords[1], rLocationName, loadedImage, targetMapInfo.mapOrigin));
+      targetMapInfo.coordinates.forEach((label, coords) {
+        if (coords.length >= 2) {
+          pointsToDisplay.add(_transformPoint(coords[0], coords[1], label, loadedImage, targetMapInfo.mapOrigin));
         }
-      }
+      });
 
       setState(() {
         _mapImage = loadedImage;
@@ -114,9 +105,10 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
   }
 
   _LabelPoint _transformPoint(double wx, double wy, String label, ui.Image image, List<double> mapOrigin) {
-    final mapX = (mapOrigin[0] - wy) / _resolution;
-    final mapY = (mapOrigin[1] - wx) / _resolution;
-    return _LabelPoint(label: label, offset: Offset(mapX, mapY));
+    // Correct conversion from world coordinates to pixel coordinates
+    final pixelX = (wx - mapOrigin[0]) / _resolution;
+    final pixelY = (wy - mapOrigin[1]) / -_resolution;
+    return _LabelPoint(label: label, offset: Offset(pixelX, pixelY));
   }
 
   void _connectMqtt() {
@@ -132,12 +124,15 @@ class _MapTrackingDialogState extends State<MapTrackingDialog> {
     _mqttService.positionStream.listen((Point point) {
       if (!mounted || !_isDataReady) return;
 
+      // MQTT coordinates are in millimeters, convert to meters
       final robotX_m = point.x / 1000.0;
       final robotY_m = point.y / 1000.0;
 
       final mapOrigin = widget.mapInfo.mapOrigin;
-      final pixelX = (mapOrigin[0] - robotY_m) / _resolution;
-      final pixelY = (mapOrigin[1] - robotX_m) / _resolution;
+
+      // Correct conversion for the robot's position
+      final pixelX = (robotX_m - mapOrigin[0]) / _resolution;
+      final pixelY = (robotY_m - mapOrigin[1]) / -_resolution;
 
       _pointBuffer.add(Offset(pixelX, pixelY));
     });

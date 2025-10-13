@@ -9,6 +9,7 @@ dependencies:
   flutter:
     sdk: flutter
   mqtt_client: ^9.8.1
+  http: ^1.2.1
 
 dev_dependencies:
   flutter_test:
